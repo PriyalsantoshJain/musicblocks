@@ -2175,6 +2175,7 @@ function Block(protoblock, blocks, overrideName) {
             }, 500);
 
             hideDOMLabel();
+            that._checkWidgets(false);
 
             dx = (event.stageX / that.blocks.getStageScale()) - that.container.x;
             if (!moved && that.isCollapsible() && dx < 30 / that.blocks.getStageScale()) {
@@ -2439,6 +2440,7 @@ function Block(protoblock, blocks, overrideName) {
                 if (!this._usePiemenu()) {
                     this._labelChanged(true, true);
                     hideDOMLabel();
+                    this._checkWidgets(false);
                 }
 
                 this.blocks.unhighlight(null);
@@ -2643,7 +2645,6 @@ function Block(protoblock, blocks, overrideName) {
                 this._piemenuPitches(solfnotes_, SOLFNOTES, SOLFATTRS, obj[0], obj[1]);
             }
 
-            console.debug("hello");
         } else if (this.name === 'customNote') {
             if (!this.blocks.logo.customTemperamentDefined) {
                 // If custom temperament is not defined by user,
@@ -3134,7 +3135,7 @@ function Block(protoblock, blocks, overrideName) {
                     this._piemenuNumber([-25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25], this.value);
                     break;
                 case 'hertz':
-                    this._piemenuNumber([220, 261, 293, 329, 349, 392, 440, 493, 523, 587, 659, 698,783,880], this.value);
+                    this._piemenuNumber([220, 247, 262, 294, 330, 349, 392, 440, 494, 523, 587, 659, 698, 784, 880], this.value);
                     break;
                 case 'right':
                     this._piemenuNumber([0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330], this.value);
@@ -3145,7 +3146,6 @@ function Block(protoblock, blocks, overrideName) {
                 }
 
             } else {
-                console.debug('NUMBER LABEL');
                 labelElem.innerHTML = '<input id="numberLabel" style="position: absolute; -webkit-user-select: text;-moz-user-select: text;-ms-user-select: text;" class="number" type="number" value="' + labelValue + '" />';
                 labelElem.classList.add('hasKeyboard');
                 this.label = docById('numberLabel');
@@ -3699,6 +3699,8 @@ function Block(protoblock, blocks, overrideName) {
     };
 
     this._piemenuScaleDegree = function (noteValues, note) {
+        var prevPitch = null;
+        
         // wheelNav pie menu for scale degree pitch selection
 
         if (this.blocks.stageClick) {
@@ -3771,6 +3773,8 @@ function Block(protoblock, blocks, overrideName) {
         if (i === -1) {
             i = 4;
         }
+        
+        prevPitch = i;
 
         this._pitchWheel.navigateWheel(i);
 
@@ -3812,13 +3816,49 @@ function Block(protoblock, blocks, overrideName) {
         var __pitchPreview = function () {
             var label = that._pitchWheel.navItems[that._pitchWheel.selectedNavItemIndex].title;
             var i = noteLabels.indexOf(label);
-            var note = noteValues[i];
+
+
+            //Check if passing C
+            if (prevPitch === null) {
+                prevPitch = i;
+            }
+
+
+            var deltaPitch = i - prevPitch;
+            if (deltaPitch > 3) {
+                var delta = deltaPitch - 7;
+            } else if (deltaPitch < -3) {
+                var delta = deltaPitch + 7;
+            } else {
+                var delta = deltaPitch;
+            }
+
+            //When user passed across C, move one octave higher if going from B to C
+            //hence, go one octave lower when passing from C to B
+            var deltaOctave = 0;
+
+            if ((prevPitch + delta) > 6) {
+                deltaOctave = 1;
+            } else if ((prevPitch + delta) < 0) {
+                deltaOctave = -1;
+            }
+
+            prevPitch = i;
             var octave = Number(that._octavesWheel.navItems[that._octavesWheel.selectedNavItemIndex].title);
+            octave += deltaOctave;
+            if (octave < 1) {
+                octave = 1;
+            } else if (octave > 8) {
+                octave = 8;
+            }
 
-            // FIX ME: get key signature if available
-            // FIX ME: get moveable if available
+            if (deltaOctave !== 0) {
+                that._octavesWheel.navigateWheel(8 - octave);
+            }
 
-            var noteName = scaleDegreeToPitch('C major', note);
+
+            var note = scaleDegreeToPitch('C major', noteValues[i]);
+
             if (that.blocks.logo.instrumentNames[0] === undefined || that.blocks.logo.instrumentNames[0].indexOf(DEFAULTVOICE) === -1) {
                 if (that.blocks.logo.instrumentNames[0] === undefined) {
                     that.blocks.logo.instrumentNames[0] = [];
@@ -3829,13 +3869,21 @@ function Block(protoblock, blocks, overrideName) {
                 that.blocks.logo.synth.loadSynth(0, DEFAULTVOICE);
             }
 
-            that.blocks.logo.synth.setMasterVolume(DEFAULTVOLUME);
-            that.blocks.logo.setSynthVolume(0, DEFAULTVOICE, DEFAULTVOLUME);
-            that.blocks.logo.synth.trigger(0, [noteName.replace(SHARP, '#').replace(FLAT, 'b') + octave], 1 / 8, DEFAULTVOICE, null, null);
+            that.blocks.logo.synth.setMasterVolume(PREVIEWVOLUME);
+            that.blocks.logo.setSynthVolume(0, DEFAULTVOICE, PREVIEWVOLUME);
+
+            //Play sample note and prevent extra sounds from playing
+            if (!that._triggerLock) {
+                that._triggerLock = true;
+                that.blocks.logo.synth.trigger(0, [note.replace(SHARP, '#').replace(FLAT, 'b') + octave], 1 / 8, DEFAULTVOICE, null, null);
+            }
+
+            setTimeout(function() {
+                that._triggerLock = false;
+            }, that.blocks.logo.defaultBPMFactor / 8);
 
             __selectionChanged();
         };
-
         // Set up handlers for pitch preview.
         for (var i = 0; i < noteValues.length; i++) {
             this._pitchWheel.navItems[i].navigateFunction = __pitchPreview;
@@ -4364,6 +4412,72 @@ function Block(protoblock, blocks, overrideName) {
 
             that.label.value = that.value;
         };
+        
+        
+        var __pitchPreviewForNum = function () {
+            var label = that._numberWheel.navItems[that._numberWheel.selectedNavItemIndex].title;
+            var i = wheelLabels.indexOf(label);
+            var actualPitch = numberToPitch(wheelValues[i] + 3);
+
+            if (that.blocks.logo.instrumentNames[0] === undefined || that.blocks.logo.instrumentNames[0].indexOf(DEFAULTVOICE) === -1) {
+                if (that.blocks.logo.instrumentNames[0] === undefined) {
+                    that.blocks.logo.instrumentNames[0] = [];
+                }
+
+                that.blocks.logo.instrumentNames[0].push(DEFAULTVOICE);
+                that.blocks.logo.synth.createDefaultSynth(0);
+                that.blocks.logo.synth.loadSynth(0, DEFAULTVOICE);
+            }
+
+            that.blocks.logo.synth.setMasterVolume(PREVIEWVOLUME);
+            that.blocks.logo.setSynthVolume(0, DEFAULTVOICE, PREVIEWVOLUME);
+
+            actualPitch[0] = actualPitch[0].replace(SHARP, '#').replace(FLAT, 'b');
+            that.blocks.logo.synth.trigger(0, actualPitch[0] + (actualPitch[1] + 3), 1 / 8, DEFAULTVOICE, null, null);
+
+            __selectionChanged();
+        };
+        
+        var __hertzPreview = function () {
+            var label = that._numberWheel.navItems[that._numberWheel.selectedNavItemIndex].title;
+            var i = wheelLabels.indexOf(label);
+            var actualPitch = frequencyToPitch(wheelValues[i]);
+
+            if (that.blocks.logo.instrumentNames[0] === undefined || that.blocks.logo.instrumentNames[0].indexOf(DEFAULTVOICE) === -1) {
+                if (that.blocks.logo.instrumentNames[0] === undefined) {
+                    that.blocks.logo.instrumentNames[0] = [];
+                }
+
+                that.blocks.logo.instrumentNames[0].push(DEFAULTVOICE);
+                that.blocks.logo.synth.createDefaultSynth(0);
+                that.blocks.logo.synth.loadSynth(0, DEFAULTVOICE);
+            }
+
+            that.blocks.logo.synth.setMasterVolume(PREVIEWVOLUME);
+            that.blocks.logo.setSynthVolume(0, DEFAULTVOICE, PREVIEWVOLUME);
+
+            actualPitch[0] = actualPitch[0].replace(SHARP, '#').replace(FLAT, 'b');
+            that.blocks.logo.synth.trigger(0, actualPitch[0] + actualPitch[1], 1 / 8, DEFAULTVOICE, null, null);
+
+
+            __selectionChanged();
+        };
+
+        // Handler for pitchnumber preview. This is to ensure that
+        // only pitchnumber block's pie menu gets a sound preview
+        if (this._usePieNumberC1() && this.blocks.blockList[this.connections[0]].name === 'pitchnumber'){
+            for (var i = 0; i < wheelValues.length; i++) {
+                this._numberWheel.navItems[i].navigateFunction = __pitchPreviewForNum;
+            }
+        }
+        
+        // Handler for Hertz preview. Need to also ensure that
+        // only hertz block gets a different sound preview
+        if (this._usePieNumberC1() && this.blocks.blockList[this.connections[0]].name === 'hertz'){
+            for (var i = 0; i < wheelValues.length; i++) {
+                this._numberWheel.navItems[i].navigateFunction = __hertzPreview;
+            }
+        }
     };
 
     this._piemenuColor = function (wheelValues, selectedValue, mode) {
@@ -5431,9 +5545,37 @@ function Block(protoblock, blocks, overrideName) {
         this._exitWheel.navItems[1].navigateFunction = __prepScale;
     };
 
+    this._checkWidgets = function (closeInput) {
+       // Detect if label is changed, then reinit widget windows
+        // if they are open.
+        var thisBlock = this.blocks.blockList.indexOf(this);
+        var topBlock = this.blocks.findTopBlock(thisBlock);
+        var widgetTitle = document.getElementsByClassName('wftTitle');
+        var lockInit = false;
+        if (closeInput === false) {
+          for (var i = 0; i < widgetTitle.length; i++) {
+            if (lockInit === false){
+              switch(widgetTitle[i].innerHTML){
+                case 'tempo':
+                case 'rhythm maker':
+                case 'pitch slider':
+                case 'pitch staircase':
+                  lockInit = true;
+                  this.blocks.reInitWidget(topBlock, 5000);
+                  break;
+              }
+            }
+
+          }
+        }
+    };
+
     this._labelChanged = function (closeInput, notPieMenu) {
         // Update the block values as they change in the DOM label.
-        console.debug('LABEL CHANGED ' + this.name);
+        // console.debug('LABEL CHANGED ' + this.name);
+        
+        // Instead, we do this when we hide the DOM element.
+        // this._checkWidgets(closeInput);
 
         if (this === null || this.label === null) {
             this._labelLock = false;

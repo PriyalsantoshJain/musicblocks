@@ -1268,6 +1268,15 @@ function Blocks (activity) {
             return thisBlockobj.connections[0];
         }
     };
+    
+    //To make everything cleaner, use this function to reinit widget
+    //when it's widget windows is open
+    this.reInitWidget = function(topBlock, timeout){
+      var that = this;
+      setTimeout(function () {
+          that.logo.runLogoCommands(topBlock);
+      }, timeout);
+    };
 
     /*
      * When a block is moved, we have to check the following:
@@ -1292,6 +1301,7 @@ function Blocks (activity) {
      * @return {void}
      */
     this.blockMoved = function (thisBlock) {
+        var initialTopBlock = this.findTopBlock(thisBlock);
         // Find any containing expandable blocks.
         this.clampBlocksToCheck = [];
         if (thisBlock == null) {
@@ -1347,6 +1357,9 @@ function Blocks (activity) {
                 }
             }
         }
+        
+        //Get widget windows title
+        var widgetTitle = document.getElementsByClassName('wftTitle');
 
         // Disconnect from connection[0] (both sides of the connection).
         if (c != null) {
@@ -1360,6 +1373,24 @@ function Blocks (activity) {
 
             myBlock.connections[0] = null;
             this.raiseStackToTop(thisBlock);
+
+            // Check if we are disconnecting blocks from widget blocks;
+            // then reinit if widget windows is open.
+            var lockInit = false;
+            for (var x = 0; x < widgetTitle.length; x++){
+              if (lockInit === false){
+                switch(widgetTitle[x].innerHTML){
+                  case 'tempo':
+                  case 'rhythm maker':
+                  case 'pitch slider':
+                  case 'pitch staircase':
+                    lockInit = true;
+                    this.reInitWidget(initialTopBlock, 1500);
+                    break;
+                }
+              }
+
+            }
         }
 
         // Look for a new connection.
@@ -1704,6 +1735,27 @@ function Blocks (activity) {
             // console.debug('Adjust Docks: ' + this.blockList[newBlock].name);
             this.adjustDocks(newBlock, true);
             // TODO: some graphical feedback re new connection?
+
+            // Check if top block is one of the widget blocks.
+            var lockInit = false;
+            if (c === null){
+                for (var i = 0; i < widgetTitle.length; i++) {
+                  var that = this;
+                  console.log(widgetTitle[i].innerHTML);
+                  if(lockInit === false){
+                    switch(widgetTitle[i].innerHTML){
+                      case 'tempo':
+                      case 'rhythm maker':
+                      case 'pitch slider':
+                      case 'pitch staircase':
+                        lockInit = true;
+                        this.reInitWidget(that.findTopBlock(thisBlock), 1500);
+                        break;
+                    }
+                  }
+
+                }
+            }
         }
 
         // If it is an arg block, where is it coming from?
